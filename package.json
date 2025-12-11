@@ -1,0 +1,22 @@
+{
+  "name": "web-sec-back",
+  "version": "1.0.0",
+  "description": "simple app for web security final project",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "body-parser": "^2.2.1",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "pg": "^8.16.3",
+    "sqlite3": "^5.1.7"
+  }
+}
