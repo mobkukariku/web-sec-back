@@ -1,7 +1,19 @@
+// Функция для экранирования HTML
+const escapeHtml = (text) => {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
 export const searchController = {
     async search(req, res) {
         const { q } = req.query;
-        // Уязвимость: пользовательский ввод вставляется напрямую в HTML без экранирования
+        const safeQuery = escapeHtml(q || 'ничего');
+        
         const html = `
         <!DOCTYPE html>
         <html>
@@ -10,9 +22,9 @@ export const searchController = {
         </head>
         <body>
             <h1>Результаты поиска</h1>
-            <p>Вы искали: ${q || 'ничего'}</p>
+            <p>Вы искали: ${safeQuery}</p>
             <div id="results">
-                ${q ? `<p>Найдено: ${q}</p>` : '<p>Введите запрос для поиска</p>'}
+                ${q ? `<p>Найдено: ${safeQuery}</p>` : '<p>Введите запрос для поиска</p>'}
             </div>
         </body>
         </html>
@@ -24,19 +36,15 @@ export const searchController = {
     async createComment(req, res) {
         const { recipe_id, user_id, content } = req.body;
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ и XSS: контент не экранируется
-            // В реальности нужно создать таблицу comments и сохранить туда
-            // Для демонстрации просто возвращаем контент обратно
+            // Безопасный ответ: контент возвращается как есть, но фронтенд должен использовать textContent
+            // Не возвращаем HTML, чтобы избежать XSS
             res.json({
                 success: true,
                 message: 'Комментарий добавлен',
                 comment: {
                     recipe_id,
                     user_id,
-                    content: content, // Уязвимость: контент возвращается как есть, без экранирования HTML
-                    html: `<div class="comment">${content}</div>`, // Опасно: HTML вставляется напрямую
-                    // Если фронтенд использует innerHTML или dangerouslySetInnerHTML, XSS сработает
-                    unsafeHtml: content // Прямой доступ к небезопасному HTML
+                    content: content // Безопасно: фронтенд должен использовать textContent, а не innerHTML
                 }
             });
         }catch (err){

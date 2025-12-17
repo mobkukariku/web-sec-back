@@ -2,10 +2,53 @@ import bcrypt from 'bcrypt';
 import { UserModel } from '../models/UserModel.js';
 
 export const profileController = {
+    async getMyProfile(req, res) {
+        const userId = req.user.userId;
+        try{
+            const user = await UserModel.findById(userId);
+
+            if(!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+            res.json(user);
+        }catch (err){
+            res.status(500).json({ error: err.message });
+        }
+    },
+
+    async updateMyProfile(req, res) {
+        const userId = req.user.userId;
+        const { name, email, password } = req.body;
+
+        try{
+            const userCheck = await UserModel.findByIdFull(userId);
+            if (!userCheck) {
+                return res.status(404).json({ error: 'Пользователь не найден' });
+            }
+
+            const updates = {};
+            if (name) updates.name = name;
+            if (email) updates.email = email;
+
+            // Если передан пароль, обновляем его
+            if (password) {
+                const hashedPassword = await bcrypt.hash(password, 10);
+                updates.password_hash = hashedPassword;
+            }
+
+            if (Object.keys(updates).length === 0) {
+                return res.status(400).json({ error: 'Нет данных для обновления' });
+            }
+
+            const user = await UserModel.update(userId, updates);
+            res.json({ message: 'Профиль успешно обновлен', user });
+        }catch (err){
+            res.status(500).json({ error: err.message });
+        }
+    },
+
     async getProfile(req, res) {
         const {userId} = req.params;
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: userId вставляется напрямую в SQL
             const user = await UserModel.findById(userId);
 
             if(!user) return res.status(404).json({ error: 'Пользователь не найден' });
@@ -21,29 +64,26 @@ export const profileController = {
         const { name, email, password } = req.body;
 
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: userId вставляется напрямую в SQL
             const userCheck = await UserModel.findByIdFull(userId);
             if (!userCheck) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
 
-            const updates = [];
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: данные вставляются напрямую без экранирования
-            if (name) updates.push(`name = '${name}'`);
-            if (email) updates.push(`email = '${email}'`);
+            const updates = {};
+            if (name) updates.name = name;
+            if (email) updates.email = email;
 
             // Если передан пароль, обновляем его
             if (password) {
                 const hashedPassword = await bcrypt.hash(password, 10);
-                updates.push(`password_hash = '${hashedPassword}'`);
+                updates.password_hash = hashedPassword;
             }
 
-            if (updates.length === 0) {
+            if (Object.keys(updates).length === 0) {
                 return res.status(400).json({ error: 'Нет данных для обновления' });
             }
 
             const user = await UserModel.update(userId, updates);
-            // Уязвимость: возвращаем данные без санитизации
             res.json({ message: 'Профиль успешно обновлен', user });
         }catch (err){
             res.status(500).json({ error: err.message });
@@ -53,20 +93,16 @@ export const profileController = {
     async getUserComments(req, res) {
         const {userId} = req.params;
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: userId вставляется напрямую в SQL
             const user = await UserModel.findByIdFull(userId);
             
             if(!user) return res.status(404).json({ error: 'Пользователь не найден' });
             
-            // Уязвимость: возвращаем данные без санитизации
-            // Если name или email содержат HTML/JS, они будут выполнены на клиенте
+            // Безопасный ответ без HTML контента, который может вызвать XSS
             res.json({
                 userId: user.id,
                 name: user.name,
                 email: user.email,
-                bio: user.bio || '',
-                // Если фронтенд использует innerHTML вместо textContent, это вызовет XSS
-                htmlContent: `<div>Пользователь: ${user.name}</div><script>console.log('XSS executed!')</script>`
+                bio: user.bio || ''
             });
         }catch (err){
             res.status(500).json({ error: err.message });

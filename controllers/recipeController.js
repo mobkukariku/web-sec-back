@@ -26,17 +26,21 @@ export const recipeController = {
     },
 
     async createRecipe(req, res) {
-        const { title, description, duration, author_id, ingredients } = req.body;
+        const { title, description, duration, ingredients } = req.body;
+        const authorId = req.user.userId; // Получаем из JWT токена
 
         try{
             await pool.query('BEGIN');
 
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: данные вставляются напрямую в SQL без экранирования
-            const recipe = await RecipeModel.create(title, description, duration, author_id);
+            const recipe = await RecipeModel.create(title, description, duration, authorId);
             const newRecipeId = recipe.id;
 
-            for (const item of ingredients) {
-                await RecipeModel.addIngredient(newRecipeId, item.id, item.amount);
+            if (ingredients && Array.isArray(ingredients)) {
+                for (const item of ingredients) {
+                    if (item.id && item.amount) {
+                        await RecipeModel.addIngredient(newRecipeId, item.id, item.amount);
+                    }
+                }
             }
 
             await pool.query('COMMIT');
@@ -53,9 +57,8 @@ export const recipeController = {
     },
 
     async getMyRecipes(req, res) {
-        const {userId} = req.params;
+        const userId = req.user.userId; // Получаем из JWT токена
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: userId вставляется напрямую в SQL
             const recipes = await RecipeModel.findByAuthorId(userId);
             res.json(recipes);
         }catch (err) {
@@ -106,30 +109,46 @@ export const recipeController = {
     async getRecipeHtml(req, res) {
         const {id} = req.params;
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: id вставляется напрямую в SQL
             const recipe = await RecipeModel.findById(id);
             
             if (!recipe) {
                 return res.status(404).send('<h1>Рецепт не найден</h1>');
             }
 
-            // Уязвимость: данные из БД вставляются напрямую в HTML без экранирования
+            // Функция для экранирования HTML
+            const escapeHtml = (text) => {
+                if (!text) return '';
+                return String(text)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            };
+
+            const safeTitle = escapeHtml(recipe.title);
+            const safeDescription = escapeHtml(recipe.description);
+            const safeDuration = escapeHtml(recipe.duration);
+
+            const ingredientsList = recipe.ingredients && recipe.ingredients.length > 0 
+                ? recipe.ingredients.map(ing => 
+                    `<li>${escapeHtml(ing.name)}: ${escapeHtml(ing.amount)}</li>`
+                  ).join('')
+                : '<li>Нет ингредиентов</li>';
+
             const html = `
             <!DOCTYPE html>
             <html>
             <head>
-                <title>${recipe.title}</title>
+                <title>${safeTitle}</title>
             </head>
             <body>
-                <h1>${recipe.title}</h1>
-                <p>${recipe.description}</p>
-                <p>Время приготовления: ${recipe.duration} минут</p>
+                <h1>${safeTitle}</h1>
+                <p>${safeDescription}</p>
+                <p>Время приготовления: ${safeDuration} минут</p>
                 <h2>Ингредиенты:</h2>
                 <ul>
-                    ${recipe.ingredients && recipe.ingredients.length > 0 
-                        ? recipe.ingredients.map(ing => `<li>${ing.name}: ${ing.amount}</li>`).join('')
-                        : '<li>Нет ингредиентов</li>'
-                    }
+                    ${ingredientsList}
                 </ul>
             </body>
             </html>
@@ -137,7 +156,11 @@ export const recipeController = {
             res.setHeader('Content-Type', 'text/html');
             res.send(html);
         }catch (err) {
-            res.status(500).send(`<h1>Ошибка: ${err.message}</h1>`);
+            const errorMessage = String(err.message)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            res.status(500).send(`<h1>Ошибка: ${errorMessage}</h1>`);
         }
     }
 };

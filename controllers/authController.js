@@ -1,32 +1,56 @@
 import bcrypt from 'bcrypt';
 import { UserModel } from '../models/UserModel.js';
+import { generateToken } from '../middleware/auth.js';
 
 export const authController = {
     async register(req, res) {
         const {email, password, name} = req.body;
         try{
+            // Проверка существования пользователя
+            const existingUser = await UserModel.findByEmail(email);
+            if (existingUser) {
+                return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+            }
+
             const hashedPassword = await bcrypt.hash(password, 10);
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: данные вставляются напрямую в SQL без экранирования
             const user = await UserModel.create(email, hashedPassword, name);
-            res.json({ message: 'Пользователь зарегистрирован', userId: user.id });
+            
+            // Генерируем JWT токен
+            const token = generateToken(user.id);
+            
+            res.json({ 
+                message: 'Пользователь зарегистрирован', 
+                token,
+                userId: user.id 
+            });
         }catch(err){
-            res.status(400).json({ error: err });
+            res.status(400).json({ error: err.message || 'Ошибка при регистрации' });
         }
     },
 
     async login(req, res) {
         const {email, password} = req.body;
         try{
-            // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: email вставляется напрямую в SQL
             const user = await UserModel.findByEmail(email);
 
-            if(!user) return res.status(400).json({ error: 'User not found' });
+            if(!user) {
+                return res.status(401).json({ error: 'Неверный email или пароль' });
+            }
 
             const validPassword = await bcrypt.compare(password, user.password_hash);
 
-            if(!validPassword) return res.status(400).json({ error: 'Invalid password' });
+            if(!validPassword) {
+                return res.status(401).json({ error: 'Неверный email или пароль' });
+            }
 
-            res.json({ message: 'Успешный вход', userId: user.id });
+            // Генерируем JWT токен
+            const token = generateToken(user.id);
+
+            res.json({ 
+                message: 'Успешный вход', 
+                token,
+                userId: user.id 
+            });
         }catch (err){
             res.status(500).json({ error: err.message });
         }

@@ -1,13 +1,15 @@
 import pool from '../config/database.js';
 
 export const RecipeModel = {
-    // УЯЗВИМОСТЬ SQL ИНЪЕКЦИИ: данные вставляются напрямую в SQL без экранирования
     async findAll(search) {
-        let query = `SELECT * FROM recipes`;
         if (search) {
-            query += ` WHERE title LIKE '%${search}%' OR description LIKE '%${search}%'`;
+            const result = await pool.query(
+                `SELECT * FROM recipes WHERE title LIKE $1 OR description LIKE $1`,
+                [`%${search}%`]
+            );
+            return result.rows;
         }
-        const result = await pool.query(query);
+        const result = await pool.query(`SELECT * FROM recipes`);
         return result.rows;
     },
 
@@ -27,8 +29,9 @@ export const RecipeModel = {
              FROM recipes r
              LEFT JOIN recipe_ingredients ri ON r.id = ri.recipe_id
              LEFT JOIN ingredients i ON ri.ingredient_id = i.id
-             WHERE r.id = ${id}
-             GROUP BY r.id`
+             WHERE r.id = $1
+             GROUP BY r.id`,
+            [id]
         );
         return result.rows[0];
     },
@@ -36,8 +39,9 @@ export const RecipeModel = {
     async create(title, description, duration, authorId) {
         const result = await pool.query(
             `INSERT INTO recipes (title, description, duration, author_id)
-             VALUES ('${title}', '${description}', ${duration}, ${authorId})
-             RETURNING id`
+             VALUES ($1, $2, $3, $4)
+             RETURNING id`,
+            [title, description, duration, authorId]
         );
         return result.rows[0];
     },
@@ -58,9 +62,10 @@ export const RecipeModel = {
              FROM recipes r
              LEFT JOIN recipe_ingredients ri ON r.id = ri.recipe_id
              LEFT JOIN ingredients i ON ri.ingredient_id = i.id
-             WHERE r.author_id = ${userId}
+             WHERE r.author_id = $1
              GROUP BY r.id
-             ORDER BY r.id DESC`
+             ORDER BY r.id DESC`,
+            [userId]
         );
         return result.rows;
     },
@@ -68,26 +73,28 @@ export const RecipeModel = {
     async update(id, title, description, duration) {
         const result = await pool.query(
             `UPDATE recipes 
-             SET title = '${title}', description = '${description}', duration = ${duration}
-             WHERE id = ${id}
-             RETURNING id`
+             SET title = $1, description = $2, duration = $3
+             WHERE id = $4
+             RETURNING id`,
+            [title, description, duration, id]
         );
         return result.rows[0];
     },
 
     async exists(id) {
-        const result = await pool.query(`SELECT * FROM recipes WHERE id = ${id}`);
+        const result = await pool.query(`SELECT * FROM recipes WHERE id = $1`, [id]);
         return result.rows.length > 0;
     },
 
     async deleteIngredients(recipeId) {
-        await pool.query(`DELETE FROM recipe_ingredients WHERE recipe_id = ${recipeId}`);
+        await pool.query(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]);
     },
 
     async addIngredient(recipeId, ingredientId, amount) {
         await pool.query(
             `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, amount)
-             VALUES (${recipeId}, ${ingredientId}, ${amount})`
+             VALUES ($1, $2, $3)`,
+            [recipeId, ingredientId, amount]
         );
     }
 };
